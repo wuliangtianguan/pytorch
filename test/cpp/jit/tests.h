@@ -38,6 +38,7 @@ namespace jit {
   _(AliasAnalysis)                                \
   _(ContainerAliasing)                            \
   _(AliasRegistration)                            \
+  _(AliasMoveAtenListOp)                          \
   _(WriteTracking)                                \
   _(Wildcards)                                    \
   _(MemoryDAG)                                    \
