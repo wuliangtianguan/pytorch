@@ -9,6 +9,7 @@ from typing import Dict, List, Set, Type
 import torch._jit_internal as _jit_internal
 from torch.jit.frontend import get_default_args, get_jit_def, get_class_properties
 from torch.jit._builtins import _find_builtin
+from torch.jit._state import _python_cu
 from torch.nn import Module
 from torch._six import get_function_from_type, bind_method
 
@@ -320,6 +321,18 @@ def get_module_concrete_type(nn_module, share_types=True):
         concrete_type = concrete_type_builder.build()
 
     return concrete_type
+
+def create_script_class(obj):
+    return create_script_class_impl(obj)
+
+def create_script_class_impl(obj):
+    qualified_class_name = _jit_internal._qualified_name(type(obj))
+    class_ty = _python_cu.get_class(qualified_class_name)
+    cpp_object = torch._C._create_object_with_type(class_ty)
+    for name, value in obj.__dict__.items():
+        cpp_object.setattr(name, value)
+
+    return wrap_cpp_class(cpp_object)
 
 def create_script_module(nn_module, stubs_fn, share_types=True):
     """
@@ -646,6 +659,12 @@ def try_compile_fn(fn, loc):
     # object
     rcb = _jit_internal.createResolutionCallbackFromClosure(fn)
     return torch.jit.script(fn, _rcb=rcb)
+
+def wrap_cpp_class(cpp_class):
+    """
+    Wrap this torch._C.Object in a Python RecursiveScriptClass.
+    """
+    return torch.jit.RecursiveScriptClass(cpp_class)
 
 def wrap_cpp_module(cpp_module):
     """

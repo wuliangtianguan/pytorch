@@ -787,6 +787,9 @@ void initJitScriptBindings(PyObject* module) {
                   return method.name();
                 });
               })
+          .def(
+              "equals",
+              [](Object& self, const Object& rhs) { return self.equals(rhs); })
           .def("__copy__", &Object::copy)
           .def(py::pickle(
               [](const Object& self)
@@ -1111,7 +1114,11 @@ void initJitScriptBindings(PyObject* module) {
       .def(
           "get_interface",
           [](const std::shared_ptr<CompilationUnit>& self,
-             const std::string& name) { return self->get_interface(name); });
+             const std::string& name) { return self->get_interface(name); })
+      .def(
+          "get_class",
+          [](const std::shared_ptr<CompilationUnit>& self,
+             const std::string& name) { return self->get_class(name); });
 
   py::class_<StrongFunctionPtr>(m, "ScriptFunction", py::dynamic_attr())
       .def(
@@ -1520,9 +1527,12 @@ void initJitScriptBindings(PyObject* module) {
 
   m.def("_get_graph_executor_optimize", &torch::jit::getGraphExecutorOptimize);
 
-  m.def("_create_module_with_type", [](const ClassTypePtr& type) {
-    return Module(get_python_cu(), type);
-  });
+  m.def(
+       "_create_module_with_type",
+       [](const ClassTypePtr& type) { return Module(get_python_cu(), type); })
+      .def("_create_object_with_type", [](const ClassTypePtr& type) {
+        return Object(get_python_cu(), type);
+      });
 
   m.def("_export_opnames", [](Module& sm) {
     return debugMakeList(torch::jit::export_opnames(sm));
