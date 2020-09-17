@@ -74,11 +74,7 @@ blocklist = [
     # Somehow, these are defined in both _C and in functional. Ick!
     'broadcast_tensors',
     # Manually define named tensor type stubs in __init__.pyi.in
-    'rename',
-    'refine_names',
-    'align_to',
     'align_tensors',
-    'unflatten',
     'meshgrid',
     'cartesian_prod',
     'block_diag',
@@ -88,7 +84,6 @@ blocklist = [
     'istft',
     'tensordot',
     'norm',
-    'split',
     'unique_consecutive',
     'atleast_1d',
     'atleast_2d',

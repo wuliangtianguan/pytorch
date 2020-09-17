@@ -7,6 +7,7 @@ import torch.utils.hooks as hooks
 import warnings
 import weakref
 from torch._C import _add_docstr
+from typing import Any, Dict, List, Tuple, Union
 from numbers import Number
 import functools
 
@@ -52,6 +53,8 @@ class Tensor(torch._C._TensorBase):
             else:
                 new_storage = self.storage().__deepcopy__(memo)
                 if self.is_quantized:
+                    # quantizer_params can be different type based on torch attribute
+                    quantizer_params: Union[Tuple[torch.qscheme, float, int], Tuple[torch.qscheme, Tensor, Tensor, int]]
                     if self.qscheme() == torch.per_tensor_affine:
                         quantizer_params = self.qscheme(), self.q_scale(), self.q_zero_point()
                     elif self.qscheme() in (torch.per_channel_affine, torch.per_channel_affine_float_qparams):
@@ -71,7 +74,7 @@ class Tensor(torch._C._TensorBase):
                         self._backward_hooks)
                 else:
                     new_tensor = self.new()
-                    new_tensor.set_(new_storage, self.storage_offset(), self.size(), self.stride())
+                    new_tensor.set_(new_storage, self.storage_offset(), self.size(), self.stride()) # type: ignore[attr-defined]
                     new_tensor.requires_grad = self.requires_grad
             memo[id(self)] = new_tensor
             return new_tensor
@@ -84,6 +87,7 @@ class Tensor(torch._C._TensorBase):
         check_serializing_named_tensor(self)
         # See Note [Don't serialize hooks]
         torch.utils.hooks.warn_if_has_hooks(self)
+        backward_hooks: Dict[Any, Any] = OrderedDict()
         # Note: Numpy array is chosen to be the rebuild component for XLA Tensor.
         # We considered a few options:
         # 1. CPU tensor can't be used here.
@@ -95,12 +99,14 @@ class Tensor(torch._C._TensorBase):
         #    `tolist()` converts every single element in the tensor into python objects
         #    and serialize them one by one.
         if self.device.type == 'xla':
-            args = (self.cpu().numpy(),
-                    self.dtype,
-                    str(self.device),
-                    self.requires_grad)
-            return (torch._utils._rebuild_xla_tensor, args)
+            arg_xla = (self.cpu().numpy(),
+                       self.dtype,
+                       str(self.device),
+                       self.requires_grad)
+            return (torch._utils._rebuild_xla_tensor, arg_xla)
         if self.is_quantized:
+            # quantizer_params can be different type based on torch attribute
+            quantizer_params: Union[Tuple[torch.qscheme, float, int], Tuple[Any, Tensor, Tensor, int]]
             if self.qscheme() == torch.per_tensor_affine:
                 quantizer_params = (torch.per_tensor_affine,
                                     self.q_scale(),
@@ -115,31 +121,31 @@ class Tensor(torch._C._TensorBase):
                                     self.q_per_channel_axis())
             else:
                 raise RuntimeError(f"Serialization is not supported for tensors of type {self.qscheme()}")
-            args = (self.storage(),
-                    self.storage_offset(),
-                    tuple(self.size()),
-                    self.stride(),
-                    quantizer_params,
-                    self.requires_grad,
-                    OrderedDict())
-            return (torch._utils._rebuild_qtensor, args)
+            args_qtensor = (self.storage(),
+                            self.storage_offset(),
+                            tuple(self.size()),
+                            self.stride(),
+                            quantizer_params,
+                            self.requires_grad,
+                            backward_hooks)
+            return (torch._utils._rebuild_qtensor, args_qtensor)
         elif self.is_sparse:
             if self.layout == torch.sparse_coo:
-                args = (self.layout,
-                        (self._indices(),
-                         self._values(),
-                         self.size()))
+                args_sparse = (self.layout,
+                               (self._indices(),
+                                self._values(),
+                                self.size()))
             else:
                 raise NotImplementedError(
                     'sparse tensor __reduce_ex__ for layout `%s`' % (self.layout))
-            return (torch._utils._rebuild_sparse_tensor, args)
+            return (torch._utils._rebuild_sparse_tensor, args_sparse)
         else:
             args = (self.storage(),
                     self.storage_offset(),
                     tuple(self.size()),
                     self.stride(),
                     self.requires_grad,
-                    OrderedDict())  # previously was self._backward_hooks
+                    backward_hooks)  # previously was self._backward_hooks
             return (torch._utils._rebuild_tensor_v2, args)
 
     def __setstate__(self, state):
@@ -153,7 +159,7 @@ class Tensor(torch._C._TensorBase):
             raise RuntimeError('__setstate__ can be only called on leaf Tensors')
         if len(state) == 4:
             # legacy serialization of Tensor
-            self.set_(*state)
+            self.set_(*state) # type: ignore[attr-defined]
             return
         elif len(state) == 5:
             # legacy serialization of Variable
@@ -645,7 +651,8 @@ class Tensor(torch._C._TensorBase):
         if type(self) is not Tensor and has_torch_function(relevant_args):
             return handle_torch_function(Tensor.__contains__, relevant_args, self, element)
         if isinstance(element, (torch.Tensor, Number)):
-            return (element == self).any().item()
+            # type hint doesn't understand the __contains__ result array
+            return (element == self).any().item() # type: ignore[assignment]
 
         raise RuntimeError(
             "Tensor.__contains__ only supports Tensor or scalar, but you passed in a %s." %
